@@ -2,5 +2,5 @@ language: scala
 scala: 2.11.12
 
 before_install:
-  - sudo apt-get install r-devel
+  - sudo apt-get install r-base-dev
   - sudo Rscript -e 'install.packages("survey", repos = "https://cran.rstudio.com")'
