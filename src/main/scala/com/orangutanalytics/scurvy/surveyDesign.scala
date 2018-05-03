@@ -205,21 +205,3 @@ case class BootstrapDesign (
   }
 }
 */
-
-import org.apache.spark.sql.SparkSession
-
-object SparkApp {
-  def main(args: Array[String]) = {
-    val spark = SparkSession.builder.master("local").appName("Simple Application").getOrCreate()
-    import spark.implicits._
-    val nhanes = spark.read.format("csv").option("header","true").option("inferSchema", "true").load("nhanes.csv")
-    // R Code From Lumley
-    // svydesign(id=~SDMVPSU, strata=~SDMVSTRA, weights=~WTMEC2YR, nest=TRUE, data=nhanes)
-    val nhanes_survey = new TsDesign(nhanes, $"SDMVPSU", $"WTMEC2YR", Some($"SDMVSTRA"))
-
-    (nhanes_survey.svyTotal(col("HI_CHOL"))).estimate.show()
-    (nhanes_survey.svyBy(col("race")).svyTotal(col("HI_CHOL"))).estimate.show()
-
-
-  }
-}
