@@ -6,6 +6,7 @@ import org.scalatest.FunSuite
 
 class SurveyTest extends FunSuite {
     val spark = SparkSession.builder.master("local").appName("Simple Application").getOrCreate()
+    val R = org.ddahl.rscala.RClient()
     import spark.implicits._
     test("A SurveyStat objectis buildable") {
 
