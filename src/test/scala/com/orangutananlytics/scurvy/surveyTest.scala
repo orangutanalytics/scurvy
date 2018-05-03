@@ -19,8 +19,8 @@ class SurveyTest extends FunSuite {
         )
         assert(test.estimate.select("level").head().getString(0) === "A")
         assert(test.variance.select("level").head().getString(0) === "A")
-        assert(test.estimate.select("total").head().getFloat(0) === 24)
-        assert(test.variance.select("variance").head().getFloat(0) === 2.5)
+        assert(test.estimate.select("total").head().getDouble(0) === 24)
+        assert(test.variance.select("variance").head().getDouble(0) === 2.5)
     }
     
     test("Survey Designs kind of work") {
