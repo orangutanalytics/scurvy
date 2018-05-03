@@ -11,7 +11,7 @@ class SurveyTest extends FunSuite {
 
         val test = new SurveyStat(
             estimate = Seq(
-                ("A", 24)
+                ("A", 24.0)
             ).toDF("level", "total"),
             variance = Seq(
                 ("A", 2.5)
