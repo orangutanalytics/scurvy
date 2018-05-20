@@ -5,35 +5,35 @@ import org.apache.spark.sql.Column
 import org.apache.spark.sql.functions._
  
 sealed trait SurveyDesign {
+  // basic attributes
   def df: DataFrame
   def id: Column
   def pweight: Column
+  def degf: Int
+  // summary statistics
+  def svyCount(weighted: Boolean = true) : Double = weighted match {
+    case true => df.sum(pweight).head().getDouble(0)
+    case false => df.count().head().getDouble(0)
+  }
+  def svyTotal(est: Column*) : SurveyStat
+  def svyQuantile(est: Column*, quantile: Double = 0.5) : SurveyStat
+  //def svyRatio(est: Column) : SurveyStat
+  def svyFreq(est: Column*) : SurveyStat
+  
+  // models
+  //def svyGlm() : SurveyModelStat
+
+  // transformations
   def svySubset(bool: Column) : SurveyDesign
-  // weighted total of continuous variable
-  def svyTotal(est: Column) : SurveyStat
+  //def svyGroupBy(by: Column*) : GroupedSurveyDesign
+  //def svyCalibrate() : SurveyDesign
+  //def svyPostStratify() : SurveyDesign
+  //def svyRake() : SurveyDesign
   
-  // weighted mean of continuous variable
-  def svyMean(est: Column) : SurveyStat
 
 }
 
-sealed trait RegularSurveyDesign extends SurveyDesign {
-  def df: DataFrame
-  def id: Column
-  def pweight: Column
-  def svyTotal(est: Column) : SurveyStat
-  
-  // weighted mean of continuous variable
-  def svyMean(est: Column) : SurveyStat
-  
-    // subset
-  def svySubset(bool: Column) : RegularSurveyDesign 
-  // by
-  // return grouped survey design object
-  def svyBy(by: Column*) : GroupedSurveyDesign
-}
-
-sealed trait GroupedSurveyDesign extends SurveyDesign {
+/*sealed trait GroupedSurveyDesign extends SurveyDesign {
   def df: DataFrame
   def group: Array[Column]
   def id: Column
@@ -53,8 +53,7 @@ sealed trait GroupedSurveyDesign extends SurveyDesign {
     estimate = df.groupBy(group.filter(_ != None).map(x => x): _*).agg((sum(est * pweight)/sum(pweight)).alias("mean")),
     variance = df.groupBy(group.filter(_ != None).map(x => x): _*).agg((sum(est * pweight)/sum(pweight)).alias("mean"))
   )
-
-}
+}*/
 
 case class TsDesign (
   df: DataFrame,
@@ -62,8 +61,19 @@ case class TsDesign (
   pweight: Column,
   strata: Option[Column] = None,
   cluster: Option[Column] = None,
-  fpc: Double = 0
-) extends RegularSurveyDesign {
+  fpc: Double = 0,
+  degf: Int = {
+    if (strata.isEmpty() && cluster.isEmpty()) {
+      df.count().head().getInt(0) - 1
+    } else if (strata.isEmpty()) {
+      df.unique(cluster).count().head().getInt(0) - 1
+    } else if (cluster.isEmpty()) {
+      df.count().head().getInt(0) - df.unique(strata).count().head().getInt(0)
+    } else {
+      df.unique(cluster).count().head().getInt(0) - df.unique(strata).count().head().getInt(0)
+    }
+  }
+) extends SurveyDesign {
   override def svyTotal(est: Column) : SurveyStat = new SurveyStat(
     estimate = df.agg(sum(est * pweight).alias("total")),
     variance = df.agg(sum(est * pweight).alias("total"))
@@ -77,12 +87,16 @@ case class TsDesign (
                 when(bool, pweight).otherwise(0)),
                 id, pweight, strata, cluster, fpc)
   }
-  override def svyBy(by: Column*) : GroupedTsDesign = {
-    GroupedTsDesign(df, by toArray, id, pweight, strata, cluster, fpc)
-  }
+  override def svyFreq(est: Column) : SurveyStat = new SurveyStat(
+    estimate = df.groupBy(est).sum(pweight).alias("freq"),
+    variance = df.groupBy(est).sum(pweight).alias("freq")
+  )
+  //override def svyBy(by: Column*) : GroupedTsDesign = {
+  //  GroupedTsDesign(df, by toArray, id, pweight, strata, cluster, fpc)
+  //}
 }
 
-case class GroupedTsDesign (
+/*case class GroupedTsDesign (
   df: DataFrame,
   group: Array[Column],
   id: Column,
@@ -96,9 +110,9 @@ case class GroupedTsDesign (
                 when(bool, pweight).otherwise(0)),
                 group, id, pweight, strata, cluster, fpc)
   }
-}
+}*/
 
-sealed trait RegularReplicateDesign extends RegularSurveyDesign {
+sealed trait RegularReplicateDesign extends SurveyDesign {
   def df: DataFrame
   def id: Column
   def pweight: Column
@@ -106,9 +120,10 @@ sealed trait RegularReplicateDesign extends RegularSurveyDesign {
   def mse: Boolean
   def scale: Double
   def rscales: Option[Array[Double]]
+  def degf: Int = repweights.length
 }
 
-sealed trait GroupedReplicateDesign extends RegularSurveyDesign {
+/*sealed trait GroupedReplicateDesign extends SurveyDesign {
   def df: DataFrame
   def group: Array[Column]
   def id: Column
@@ -118,7 +133,7 @@ sealed trait GroupedReplicateDesign extends RegularSurveyDesign {
   def scale: Double
   def rscales: Option[Array[Double]]
 }
-/*
+
 case class BrrDesign (
   df: DataFrame,
   id: Column,
