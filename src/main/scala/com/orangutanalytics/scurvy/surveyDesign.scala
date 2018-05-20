@@ -12,8 +12,8 @@ sealed trait SurveyDesign {
   def degf: Int
   // summary statistics
   def svyCount(weighted: Boolean = true) : Double = weighted match {
-    case true => df.sum(pweight).head().getDouble(0)
-    case false => df.count().head().getDouble(0)
+    case true => df.agg(sum(pweight)).head().getDouble(0)
+    case false => df.count().toDouble  
   }
   def svyTotal(est: Column*) : SurveyStat
   def svyQuantile(est: Column*, quantile: Double = 0.5) : SurveyStat
@@ -63,14 +63,14 @@ case class TsDesign (
   cluster: Option[Column] = None,
   fpc: Double = 0,
   degf: Int = {
-    if (strata.isEmpty() && cluster.isEmpty()) {
-      df.count().head().getInt(0) - 1
-    } else if (strata.isEmpty()) {
-      df.unique(cluster).count().head().getInt(0) - 1
-    } else if (cluster.isEmpty()) {
-      df.count().head().getInt(0) - df.unique(strata).count().head().getInt(0)
+    if (strata.isEmpty && cluster.isEmpty) {
+      df.count().toInt() - 1
+    } else if (strata.isEmpty) {
+      df.distinct(cluster).count().toInt() - 1
+    } else if (cluster.isEmpty) {
+      df.count().toInt - df.distinct(strata).count().toInt
     } else {
-      df.unique(cluster).count().head().getInt(0) - df.unique(strata).count().head().getInt(0)
+      df.distinct(cluster).count().toInt - df.distinct(strata).count().toInt
     }
   }
 ) extends SurveyDesign {
@@ -88,8 +88,8 @@ case class TsDesign (
                 id, pweight, strata, cluster, fpc)
   }
   override def svyFreq(est: Column) : SurveyStat = new SurveyStat(
-    estimate = df.groupBy(est).sum(pweight).alias("freq"),
-    variance = df.groupBy(est).sum(pweight).alias("freq")
+    estimate = df.groupBy(est).agg(sum(pweight)).alias("freq"),
+    variance = df.groupBy(est).agg(sum(pweight)).alias("freq")
   )
   //override def svyBy(by: Column*) : GroupedTsDesign = {
   //  GroupedTsDesign(df, by toArray, id, pweight, strata, cluster, fpc)
