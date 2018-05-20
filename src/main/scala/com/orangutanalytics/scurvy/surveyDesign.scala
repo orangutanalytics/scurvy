@@ -16,7 +16,7 @@ sealed trait SurveyDesign {
     case false => df.count().toDouble  
   }
   def svyTotal(est: Column*) : SurveyStat
-  def svyQuantile(est: Column*, quantile: Double = 0.5) : SurveyStat
+  //def svyQuantile(est: Column*, quantile: Double = 0.5) : SurveyStat
   //def svyRatio(est: Column) : SurveyStat
   def svyFreq(est: Column*) : SurveyStat
   
@@ -64,13 +64,13 @@ case class TsDesign (
   fpc: Double = 0,
   degf: Int = {
     if (strata.isEmpty && cluster.isEmpty) {
-      df.count().toInt() - 1
+      df.count().toInt - 1
     } else if (strata.isEmpty) {
-      df.distinct(cluster).count().toInt() - 1
+      df.select(cluster).distinct().count().toInt - 1
     } else if (cluster.isEmpty) {
-      df.count().toInt - df.distinct(strata).count().toInt
+      df.count().toInt - df.select(strata).distinct().count().toInt
     } else {
-      df.distinct(cluster).count().toInt - df.distinct(strata).count().toInt
+      df.select(cluster).distinct().count().toInt - df.select(strata).distinct().count().toInt
     }
   }
 ) extends SurveyDesign {
