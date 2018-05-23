@@ -70,7 +70,6 @@ case class TsDesign (
         case(Some(cluster)) => df.select(cluster).distinct().count().toInt - 1
       }
     } else if (cluster.isEmpty) {
-      throw new Exception("Ahhhh")
       strata match {
         case(Some(strata)) => df.count().toInt - df.select(strata).distinct().count().toInt
       }
