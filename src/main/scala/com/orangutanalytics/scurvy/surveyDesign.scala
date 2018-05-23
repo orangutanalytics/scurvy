@@ -18,7 +18,7 @@ sealed trait SurveyDesign {
   def svyMean(est: Column) : SurveyStat
   //def svyQuantile(est: Column*, quantile: Double = 0.5) : SurveyStat
   //def svyRatio(numerator: Column, denominator: Column) : SurveyStat
-  def svyFreq(est: Column) : SurveyStat
+  def svyFreq(est: Column*) : SurveyStat
   
   // models
   //def svyGlm() : SurveyModelStat
