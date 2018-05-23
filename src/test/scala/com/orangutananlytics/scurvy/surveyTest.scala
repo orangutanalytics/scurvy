@@ -11,7 +11,7 @@ class SurveyTest extends FunSuite {
     val nhanes = spark.read.format("csv").option("header","true").option("inferSchema", "true").load("data/nhanes.csv")
     // R Code From Lumley
     // svydesign(id=~SDMVPSU, strata=~SDMVSTRA, weights=~WTMEC2YR, nest=TRUE, data=nhanes)
-    val nhanes_survey = new TsDesign(nhanes, $"SDMVPSU", $"WTMEC2YR", Some($"SDMVSTRA"))
+    val nhanes_survey = new TsDesign(nhanes, $"WTMEC2YR", Some($"SDMVSTRA"), Some($"SDMVPSU"))
     test("A SurveyStat objectis buildable") {
 
         val test = new SurveyStat(
@@ -28,15 +28,18 @@ class SurveyTest extends FunSuite {
         assert(test.variance.select("variance").head().getDouble(0) === 2.5)
     }
     
-    test("Survey Designs Degrees of Freedom") {
-      assert(nhanes_survey.degf === 16)
-    }
-    test("svyCount works for taylor series") {
+    test("count") {
       assert(nhanes_survey.svyCount(false) === 8591)
-      assert(nhanes_survey.svyCount() === 276536446)
+      assert(Math.round(nhanes_survey.svyCount()) === 276536446)
     }
     
-      (nhanes_survey.svyTotal(col("HI_CHOL"))).estimate.show()
-      (nhanes_survey.svyBy(col("race")).svyTotal(col("HI_CHOL"))).estimate.show()
+    test("degrees of freedom") {
+      assert(nhanes_survey.degf === 16)
+    }
+    
+    test("subset") {
+      val nhanes_hispanic = nhanes_survey.svySubset($"race" === 1)
+      assert(nhanes_hispanic.svyCount(false) === 8591)
+      assert(Math.round(nhanes_hispanic.svyCount()) === 41633252)
     }
 }

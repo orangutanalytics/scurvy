@@ -7,7 +7,6 @@ import org.apache.spark.sql.functions._
 sealed trait SurveyDesign {
   // basic attributes
   def df: DataFrame
-  def id: Column
   def pweight: Column
   def degf: Int
   // summary statistics
@@ -15,10 +14,11 @@ sealed trait SurveyDesign {
     case true => df.agg(sum(pweight)).head().getDouble(0)
     case false => df.count().toDouble  
   }
-  def svyTotal(est: Column*) : SurveyStat
+  def svyTotal(est: Column) : SurveyStat
+  def svyMean(est: Column) : SurveyStat
   //def svyQuantile(est: Column*, quantile: Double = 0.5) : SurveyStat
-  //def svyRatio(est: Column) : SurveyStat
-  def svyFreq(est: Column*) : SurveyStat
+  //def svyRatio(numerator: Column, denominator: Column) : SurveyStat
+  def svyFreq(est: Column) : SurveyStat
   
   // models
   //def svyGlm() : SurveyModelStat
@@ -36,7 +36,6 @@ sealed trait SurveyDesign {
 /*sealed trait GroupedSurveyDesign extends SurveyDesign {
   def df: DataFrame
   def group: Array[Column]
-  def id: Column
   def pweight: Column
   def svyTotal(est: Column) : SurveyStat = new SurveyStat(
     estimate = {
@@ -57,23 +56,30 @@ sealed trait SurveyDesign {
 
 case class TsDesign (
   df: DataFrame,
-  id: Column,
   pweight: Column,
   strata: Option[Column] = None,
   cluster: Option[Column] = None,
-  fpc: Double = 0,
-  degf: Int = {
+  fpc: Double = 0
+) extends SurveyDesign {
+  override def degf: Int = {
+    // this is not the scala-ish way to do things
     if (strata.isEmpty && cluster.isEmpty) {
       df.count().toInt - 1
     } else if (strata.isEmpty) {
-      df.select(cluster).distinct().count().toInt - 1
+      cluster match {
+        case(Some(cluster)) => df.select(cluster).distinct().count().toInt - 1
+      }
     } else if (cluster.isEmpty) {
-      df.count().toInt - df.select(strata).distinct().count().toInt
+      throw new Exception("Ahhhh")
+      strata match {
+        case(Some(strata)) => df.count().toInt - df.select(strata).distinct().count().toInt
+      }
     } else {
-      df.select(cluster).distinct().count().toInt - df.select(strata).distinct().count().toInt
+      (cluster, strata) match {
+        case(Some(cluster),Some(strata)) => df.groupBy(strata).agg(countDistinct(cluster).alias("total")).agg(sum("total")).head().getLong(0).toInt - df.select(strata).distinct().count().toInt
+      }
     }
   }
-) extends SurveyDesign {
   override def svyTotal(est: Column) : SurveyStat = new SurveyStat(
     estimate = df.agg(sum(est * pweight).alias("total")),
     variance = df.agg(sum(est * pweight).alias("total"))
@@ -85,9 +91,9 @@ case class TsDesign (
   override def svySubset(bool: Column) : TsDesign = {
     TsDesign(df.withColumn(pweight.toString(), 
                 when(bool, pweight).otherwise(0)),
-                id, pweight, strata, cluster, fpc)
+                pweight, strata, cluster, fpc)
   }
-  override def svyFreq(est: Column) : SurveyStat = new SurveyStat(
+  override def svyFreq(est: Column*) : SurveyStat = new SurveyStat(
     estimate = df.groupBy(est).agg(sum(pweight)).alias("freq"),
     variance = df.groupBy(est).agg(sum(pweight)).alias("freq")
   )
@@ -99,7 +105,6 @@ case class TsDesign (
 /*case class GroupedTsDesign (
   df: DataFrame,
   group: Array[Column],
-  id: Column,
   pweight: Column,
   strata: Option[Column] = None,
   cluster: Option[Column] = None,
@@ -114,7 +119,6 @@ case class TsDesign (
 
 sealed trait RegularReplicateDesign extends SurveyDesign {
   def df: DataFrame
-  def id: Column
   def pweight: Column
   def repweights: Array[Column]
   def mse: Boolean
@@ -126,7 +130,6 @@ sealed trait RegularReplicateDesign extends SurveyDesign {
 /*sealed trait GroupedReplicateDesign extends SurveyDesign {
   def df: DataFrame
   def group: Array[Column]
-  def id: Column
   def pweight: Column
   def repweights: Array[Column]
   def mse: Boolean
@@ -136,7 +139,6 @@ sealed trait RegularReplicateDesign extends SurveyDesign {
 
 case class BrrDesign (
   df: DataFrame,
-  id: Column,
   pweight: Column,
   repweights: Array[Column],
   mse: Boolean = true,
@@ -155,7 +157,6 @@ case class BrrDesign (
 
 case class FayDesign (
   df: DataFrame,
-  id: Column,
   pweight: Column,
   repweights: Array[Column],
   rho: Double,
@@ -172,7 +173,6 @@ case class FayDesign (
 
 case class Jk1Design (
   df: DataFrame,
-  id: Column,
   pweight: Column,
   repweights: Array[Column],
   fpc: Double = 0,
@@ -189,7 +189,6 @@ case class Jk1Design (
 
 case class JknDesign (
   df: DataFrame,
-  id: Column,
   pweight: Column,
   repweights: Array[Column],
   fpc: Double = 0,
@@ -206,7 +205,6 @@ case class JknDesign (
 
 case class BootstrapDesign (
   df: DataFrame,
-  id: Column,
   pweight: Column,
   repweights: Array[Column],
   mse: Boolean = true,
