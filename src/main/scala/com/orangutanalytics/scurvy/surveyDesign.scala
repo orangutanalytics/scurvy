@@ -94,8 +94,8 @@ case class TsDesign (
                 pweight, strata, cluster, fpc)
   }
   override def svyFreq(est: Column*) : SurveyStat = new SurveyStat(
-    estimate = df.groupBy(est).agg(sum(pweight)).alias("freq"),
-    variance = df.groupBy(est).agg(sum(pweight)).alias("freq")
+    estimate = df.groupBy(est.map(x => x): _*).agg(sum(pweight)).alias("freq"),
+    variance = df.groupBy(est.map(x => x): _*).agg(sum(pweight)).alias("freq")
   )
   //override def svyBy(by: Column*) : GroupedTsDesign = {
   //  GroupedTsDesign(df, by toArray, id, pweight, strata, cluster, fpc)
