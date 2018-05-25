@@ -8,10 +8,6 @@ class SurveyTest extends FunSuite {
     val spark = SparkSession.builder.master("local").appName("Simple Application").getOrCreate()
     val R = org.ddahl.rscala.RClient()
     import spark.implicits._
-    val nhanes = spark.read.format("csv").option("header","true").option("inferSchema", "true").load("data/nhanes.csv")
-    // R Code From Lumley
-    // svydesign(id=~SDMVPSU, strata=~SDMVSTRA, weights=~WTMEC2YR, nest=TRUE, data=nhanes)
-    val nhanes_survey = new TsDesign(nhanes, $"WTMEC2YR", Some($"SDMVSTRA"), Some($"SDMVPSU"))
     test("A SurveyStat objectis buildable") {
 
         val test = new SurveyStat(
@@ -20,13 +16,20 @@ class SurveyTest extends FunSuite {
             ).toDF("level", "total"),
             variance = Seq(
                 ("A", 2.5)
-            ).toDF("level", "variance")
+            ).toDF("level", "variance"),
+            statistic = col("total"),
+            variable = col("A")
         )
         assert(test.estimate.select("level").head().getString(0) === "A")
         assert(test.variance.select("level").head().getString(0) === "A")
         assert(test.estimate.select("total").head().getDouble(0) === 24)
         assert(test.variance.select("variance").head().getDouble(0) === 2.5)
     }
+    
+    val nhanes = spark.read.format("csv").option("header","true").option("inferSchema", "true").option("nullValue", "NA").load("data/nhanes.csv").cache()
+    // R Code From Lumley
+    // svydesign(id=~SDMVPSU, strata=~SDMVSTRA, weights=~WTMEC2YR, nest=TRUE, data=nhanes)
+    val nhanes_survey = new TsDesign(nhanes, $"WTMEC2YR", Some($"SDMVSTRA"), Some($"SDMVPSU"))
     
     test("count") {
       assert(nhanes_survey.svyCount(false) === 8591)
@@ -42,4 +45,19 @@ class SurveyTest extends FunSuite {
       assert(nhanes_hispanic.svyCount(false) === 8591)
       assert(Math.round(nhanes_hispanic.svyCount()) === 41633252)
     }
+    
+    test("svytotal") {
+      assert(nhanes_survey.svyTotal($"HI_CHOL").estimate.select("total").head().getDouble(0).toInt === 28635245)
+      // numerical issue so just checking we are close
+      assert(Math.abs(nhanes_survey.svyTotal($"HI_CHOL").SE.select("SE").head().getDouble(0).toInt - 2020711) <= 1)
+      assert(Math.abs(nhanes_survey.svyTotal($"HI_CHOL").cv.select("cv").head().getDouble(0) - 0.07056726) <= 0.001)
+    }
+    
+    test("svymean") {
+      assert(Math.abs(nhanes_survey.svyMean($"HI_CHOL").estimate.select("mean").head().getDouble(0) - 0.11214) <= 0.00001)
+      // numerical issue so just checking we are close
+      //assert((nhanes_survey.svyMean($"HI_CHOL").variance.select("variance").head().getDouble(0) === 0.00002965717))
+      //assert(Math.abs(nhanes_survey.svyMean($"HI_CHOL").cv.select("cv").head().getDouble(0) - 0.04856158) <= 0.00000001)
+    }
+
 }
