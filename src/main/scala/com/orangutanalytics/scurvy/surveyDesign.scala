@@ -18,7 +18,7 @@ sealed trait SurveyDesign {
   def svyMean(est: Column) : SurveyStat
   //def svyQuantile(est: Column*, quantile: Double = 0.5) : SurveyStat
   //def svyRatio(numerator: Column, denominator: Column) : SurveyStat
-  def svyFreq(est: Column*) : SurveyStat
+  //def svyFreq(est: Column*) : SurveyStat
   
   // models
   //def svyGlm() : SurveyModelStat
@@ -80,22 +80,70 @@ case class TsDesign (
     }
   }
   override def svyTotal(est: Column) : SurveyStat = new SurveyStat(
-    estimate = df.agg(sum(est * pweight).alias("total")),
-    variance = df.agg(sum(est * pweight).alias("total"))
+    estimate = df.filter(est.isNotNull).agg(sum(est * pweight).alias("total")),
+    variance = {
+    // this is not the scala-ish way to do things
+    if (strata.isEmpty && cluster.isEmpty) {
+      // need to add fpc
+      df.filter(est.isNotNull).agg(var_samp(est * pweight).alias("variance"))
+    } else if (strata.isEmpty) {
+      cluster match {
+        case(Some(cluster)) => df.filter(est.isNotNull).groupBy(cluster).agg(sum(est * pweight).alias("total"))
+        .agg((count("total") * (1 - fpc) * var_samp("total")))
+      }
+    } else if (cluster.isEmpty) {
+      strata match {
+        case(Some(strata)) => df.filter(est.isNotNull).groupBy(strata).agg((count(lit(1)) * (1 - fpc) * var_samp(est * pweight)).alias("total"))
+        .agg(sum("total").alias("variance"))
+      }
+    } else {
+      (cluster, strata) match {
+        case(Some(cluster), Some(strata)) => df.filter(est.isNotNull).groupBy(strata, cluster).agg(sum(est * pweight).alias("total")).
+        groupBy(strata).agg((count("total") * (1 - fpc) * var_samp("total")).alias("vari")).agg(sum("vari").alias("variance"))
+      }
+    }
+  },
+  statistic = col("total"),
+  variable = est
   )
   override def svyMean(est: Column) : SurveyStat = new SurveyStat(
-    estimate = df.agg((sum(est * pweight)/sum(pweight)).alias("total")),
-    variance = df.agg((sum(est * pweight)/sum(pweight)).alias("total"))
+    estimate = df.filter(est.isNotNull).agg((sum(est * pweight)/sum(pweight)).alias("mean")),
+    variance = {
+    // this is not the scala-ish way to do things
+    if (strata.isEmpty && cluster.isEmpty) {
+      // need to add fpc
+      df.filter(est.isNotNull).agg(var_samp(est * pweight)/sum(pweight).alias("variance"))
+    } else if (strata.isEmpty) {
+      cluster match {
+        case(Some(cluster)) => df.filter(est.isNotNull).groupBy(cluster).agg((sum(est * pweight)/sum(pweight)).alias("mean"))
+        .agg((count("mean") * (1 - fpc) * var_samp("mean")))
+      }
+    } else if (cluster.isEmpty) {
+      strata match {
+        case(Some(strata)) => df.filter(est.isNotNull).groupBy(strata).agg((count(lit(1)) * (1 - fpc) * var_samp(est * pweight)/sum(pweight)).alias("vari"))
+        .agg(sum("vari").alias("variance"))
+      }
+    } else {
+      (cluster, strata) match {
+        case(Some(cluster), Some(strata)) => df.filter(est.isNotNull).groupBy(strata, cluster).agg((sum(est * pweight)/sum(pweight)).alias("mean")).
+        groupBy(strata).agg((1 * (1 - fpc) * var_samp("mean")).alias("vari")).agg(sum("vari").alias("variance"))
+      }
+    }
+  },
+    statistic = col("mean"),
+    variable = est
   )
   override def svySubset(bool: Column) : TsDesign = {
     TsDesign(df.withColumn(pweight.toString(), 
                 when(bool, pweight).otherwise(0)),
                 pweight, strata, cluster, fpc)
   }
-  override def svyFreq(est: Column*) : SurveyStat = new SurveyStat(
+  /*override def svyFreq(est: Column*) : SurveyStat = new SurveyStat(
     estimate = df.groupBy(est.map(x => x): _*).agg(sum(pweight)).alias("freq"),
-    variance = df.groupBy(est.map(x => x): _*).agg(sum(pweight)).alias("freq")
-  )
+    variance = df.groupBy(est.map(x => x): _*).agg(sum(pweight)).alias("freq"),
+    statistic = col("freq"),
+    variable = est
+    )*/
   //override def svyBy(by: Column*) : GroupedTsDesign = {
   //  GroupedTsDesign(df, by toArray, id, pweight, strata, cluster, fpc)
   //}
