@@ -126,7 +126,7 @@ case class TsDesign (
     } else {
       (cluster, strata) match {
         case(Some(cluster), Some(strata)) => df.filter(est.isNotNull).groupBy(strata, cluster).agg((sum(est * pweight)/sum(pweight)).alias("mean")).
-        groupBy(strata).agg((1 * (1 - fpc) * var_samp("mean")).alias("vari")).agg(sum("vari").alias("variance"))
+        groupBy(strata).agg((count("mean") * (1 - fpc) * var_samp("mean")).alias("vari")).agg(sum("vari").alias("variance"))
       }
     }
   },
