@@ -56,8 +56,8 @@ class SurveyTest extends FunSuite {
     test("svymean") {
       assert(Math.abs(nhanes_survey.svyMean($"HI_CHOL").estimate.select("mean").head().getDouble(0) - 0.11214) <= 0.00001)
       // numerical issue so just checking we are close
-      //assert((nhanes_survey.svyMean($"HI_CHOL").variance.select("variance").head().getDouble(0) === 0.00002965717))
-      //assert(Math.abs(nhanes_survey.svyMean($"HI_CHOL").cv.select("cv").head().getDouble(0) - 0.04856158) <= 0.00000001)
+      assert(Math.abs(nhanes_survey.svyMean($"HI_CHOL").variance.select("variance").head().getDouble(0) - 0.00002965717) <= 0.0000000001)
+      assert(Math.abs(nhanes_survey.svyMean($"HI_CHOL").cv.select("cv").head().getDouble(0) - 0.04856158) <= 0.00000001)
     }
 
 }
