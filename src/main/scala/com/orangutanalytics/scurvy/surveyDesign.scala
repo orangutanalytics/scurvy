@@ -123,8 +123,9 @@ case class TsDesign (
     } else if (cluster.isEmpty) {
       strata match {
         case(Some(strata)) => df.filter(est.isNotNull).
-        groupBy(strata).agg((sum(pweight * (est - (df.filter(est.isNotNull).agg((sum(est * pweight)/sum(pweight)).alias("estimate")).
-        agg((count("mean") * (1 - fpc) * var_samp("mean")).alias("vari")).agg(sum("vari").alias("variance"))
+        groupBy(strata).agg((count("est") * var_samp(pweight * (est - (df.filter(est.isNotNull).agg((sum(est * pweight)/sum(pweight)).alias("estimate"))
+          .select("estimate").head().getDouble(0))))/(df.filter(est.isNotNull).agg(sum(pweight).alias("total")).head().getDouble(0))).alias("mean")).
+        agg(sum("vari").alias("variance"))
       }
     } else {
       (cluster, strata) match {
