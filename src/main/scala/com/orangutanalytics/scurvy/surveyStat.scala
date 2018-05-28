@@ -7,8 +7,7 @@ import org.apache.spark.sql.Column
 case class SurveyStat (
   estimate: DataFrame,
   variance: DataFrame,
-  statistic: Column,
-  variable: Column
+  statistic: Column
 ) {
   def SE : DataFrame = variance.withColumn("SE", sqrt("variance")).drop("variance")
   def cv : DataFrame = {
