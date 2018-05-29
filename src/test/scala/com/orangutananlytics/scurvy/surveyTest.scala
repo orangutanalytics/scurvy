@@ -58,8 +58,8 @@ class SurveyTest extends FunSuite {
       assert(Math.abs(nhanes_cluster_strata.svyTotal($"HI_CHOL").cv.select("cv").head().getDouble(0) - 0.07056726) <= 0.001)
       
       assert(Math.abs(nhanes_cluster.svyTotal($"HI_CHOL").SE.select("SE").head().getDouble(0).toInt - 13767540) <= 1)
-      //assert(nhanes_rs.svyTotal($"HI_CHOL").SE.select("SE").head().getDouble(0).toInt === 1244260)
-      //assert(nhanes_strata.svyTotal($"HI_CHOL").SE.select("SE").head().getDouble(0).toInt === 1240406)
+      assert(Math.abs(nhanes_rs.svyTotal($"HI_CHOL").SE.select("SE").head().getDouble(0).toInt - 1244260) <= 1)
+      assert(Math.abs(nhanes_strata.svyTotal($"HI_CHOL").SE.select("SE").head().getDouble(0).toInt - 1240406) <= 1)
     }
     
     test("svymean") {
@@ -70,8 +70,8 @@ class SurveyTest extends FunSuite {
     }
     
     test("svyratio") {
-      assert(Math.abs(nhanes_cluster_strata.svyRatio($"HI_CHOL", $"race").estimate.select("ratio").head().getDouble(0) - 0.05331284) <= 0.0000001)
-      assert(Math.abs(nhanes_cluster_strata.svyRatio($"HI_CHOL", $"race").SE.select("SE").head().getDouble(0) - 0.002867244) <= 0.00000001)
+      assert(Math.abs(nhanes_cluster_strata.svySubset(col("HI_CHOL").isNotNull && col("race").isNotNull).svyRatio($"HI_CHOL", $"race").estimate.select("ratio").head().getDouble(0) - 0.05331284) <= 0.0000001)
+      assert(Math.abs(nhanes_cluster_strata.svySubset(col("HI_CHOL").isNotNull && col("race").isNotNull).svyRatio($"HI_CHOL", $"race").SE.select("SE").head().getDouble(0) - 0.002867244) <= 0.00000001)
     }
 
 }
