@@ -29,7 +29,9 @@ sealed trait SurveyDesign {
   //def svyCalibrate() : SurveyDesign
   //def svyPostStratify() : SurveyDesign
   //def svyRake() : SurveyDesign
-  
+  def svyFilter(est: Column*) : DataFrame = {
+    df.withColumn(pweight.toString(), when(est.isNotNull, pweight).otherwise(0)).withColumn(est.toString(), when(est.isNotNull, est).otherwise(0))
+  }
 
 }
 
@@ -61,83 +63,46 @@ case class TsDesign (
   cluster: Option[Column] = None,
   fpc: Double = 0
 ) extends SurveyDesign {
-  override def degf: Int = {
-    // this is not the scala-ish way to do things
-    if (strata.isEmpty && cluster.isEmpty) {
-      df.count().toInt - 1
-    } else if (strata.isEmpty) {
-      cluster match {
-        case(Some(cluster)) => df.select(cluster).distinct().count().toInt - 1
-      }
-    } else if (cluster.isEmpty) {
-      strata match {
-        case(Some(strata)) => df.count().toInt - df.select(strata).distinct().count().toInt
-      }
-    } else {
-      (cluster, strata) match {
-        case(Some(cluster),Some(strata)) => df.groupBy(strata).agg(countDistinct(cluster).alias("total")).agg(sum("total")).head().getLong(0).toInt - df.select(strata).distinct().count().toInt
-      }
+  override def degf: Int = (cluster, strata) match {
+    case (None, None) => df.count().toInt - 1
+    case (Some(cluster), None) => df.select(cluster).distinct().count().toInt - 1
+    case (None, Some(strata)) => df.count().toInt - df.select(strata).distinct().count().toInt
+    case (Some(cluster), Some(strata)) => df.groupBy(strata).agg(countDistinct(cluster).alias("total")).agg(sum("total")).head().getLong(0).toInt - df.select(strata).distinct().count().toInt
     }
-  }
+  
   override def svyTotal(est: Column) : SurveyStat = new SurveyStat(
-    estimate = df.withColumn(pweight.toString(), when(est.isNotNull, pweight).otherwise(0)).withColumn(est.toString(), when(est.isNotNull, est).otherwise(0)).agg(sum(est * pweight).alias("total")),
-    variance = {
-    // this is not the scala-ish way to do things
-    if (strata.isEmpty && cluster.isEmpty) {
-      // need to add fpc
-      df.withColumn(pweight.toString(), when(est.isNotNull, pweight).otherwise(0)).withColumn(est.toString(), when(est.isNotNull, est).otherwise(0)).withColumn("total", est * pweight).agg((count(est) * (1 - fpc) * var_samp("total")).alias("variance"))
-    } else if (strata.isEmpty) {
-      cluster match {
-        case(Some(cluster)) => df.withColumn(pweight.toString(), when(est.isNotNull, pweight).otherwise(0)).withColumn(est.toString(), when(est.isNotNull, est).otherwise(0)).groupBy(cluster).agg(sum(est * pweight).alias("total"))
+    estimate = svyFilter(est).agg(sum(est * pweight).alias("total")),
+    variance = (cluster, strata) match {
+    case (None, None) => svyFilter(est).agg((count(est) * (1 - fpc) * var_samp(est * pweight)).alias("variance"))
+    case (Some(cluster), None) => svyFilter(est).groupBy(cluster).agg(sum(est * pweight).alias("total"))
         .agg((count("total") * (1 - fpc) * var_samp("total")).alias("variance"))
-      }
-    } else if (cluster.isEmpty) {
-      strata match {
-        case(Some(strata)) => df.withColumn(pweight.toString(), when(est.isNotNull, pweight).otherwise(0)).withColumn(est.toString(), when(est.isNotNull, est).otherwise(0)).withColumn("total", est * pweight).groupBy(strata).agg((count(est) * (1 - fpc) * var_samp("total")).alias("variance"))
+    case (None, Some(strata)) =>  svyFilter(est).groupBy(strata).agg((count(est) * (1 - fpc) * var_samp(est * pweight)).alias("variance"))
         .agg(sum("variance").alias("variance"))
-      }
-    } else {
-      (cluster, strata) match {
-        case(Some(cluster), Some(strata)) => df.withColumn(pweight.toString(), when(est.isNotNull, pweight).otherwise(0)).withColumn(est.toString(), when(est.isNotNull, est).otherwise(0)).groupBy(strata, cluster).agg(sum(est * pweight).alias("total")).
+    case (Some(cluster), Some(strata)) => svyFilter(est).groupBy(strata, cluster).agg(sum(est * pweight).alias("total")).
         groupBy(strata).agg((count("total") * (1 - fpc) * var_samp("total")).alias("vari")).agg(sum("vari").alias("variance"))
-      }
-    }
-  },
+    },
   statistic = col("total")
   )
   override def svyMean(est: Column) : SurveyStat = new SurveyStat(
-    estimate = df.withColumn(pweight.toString(), when(est.isNotNull, pweight).otherwise(0)).withColumn(est.toString(), when(est.isNotNull, est).otherwise(0)).agg((sum(est * pweight)/sum(pweight)).alias("mean")),
-    variance = {
-    // this is not the scala-ish way to do things
-    if (strata.isEmpty && cluster.isEmpty) {
-      // need to add fpc
-      df.withColumn(pweight.toString(), when(est.isNotNull, pweight).otherwise(0)).withColumn(est.toString(), when(est.isNotNull, est).otherwise(0)).
-        agg((sum(pweight * (est - (df.withColumn(pweight.toString(), when(est.isNotNull, pweight).otherwise(0)).withColumn(est.toString(), when(est.isNotNull, est).otherwise(0)).agg((sum(est * pweight)/sum(pweight)).alias("estimate"))
-          .select("estimate").head().getDouble(0))))/(df.withColumn(pweight.toString(), when(est.isNotNull, pweight).otherwise(0)).withColumn(est.toString(), when(est.isNotNull, est).otherwise(0)).agg(sum(pweight).alias("total")).head().getDouble(0))).alias("mean")).
+    estimate = svyFilter(est).agg((sum(est * pweight)/sum(pweight)).alias("mean")),
+    variance = (cluster, strata) match {
+    case (None, None) => svyFilter(est).
+        agg((sum(pweight * (est - (svyFilter(est).agg((sum(est * pweight)/sum(pweight)).alias("estimate"))
+          .select("estimate").head().getDouble(0))))/(svyFilter(est).agg(sum(pweight).alias("total")).head().getDouble(0))).alias("mean")).
         agg((count("mean") * (1 - fpc) * var_samp("mean")).alias("variance"))
-    } else if (strata.isEmpty) {
-      cluster match {
-        case(Some(cluster)) => df.withColumn(pweight.toString(), when(est.isNotNull, pweight).otherwise(0)).withColumn(est.toString(), when(est.isNotNull, est).otherwise(0)).
-        groupBy(cluster).agg((sum(pweight * (est - (df.withColumn(pweight.toString(), when(est.isNotNull, pweight).otherwise(0)).withColumn(est.toString(), when(est.isNotNull, est).otherwise(0)).agg((sum(est * pweight)/sum(pweight)).alias("estimate"))
-          .select("estimate").head().getDouble(0))))/(df.withColumn(pweight.toString(), when(est.isNotNull, pweight).otherwise(0)).withColumn(est.toString(), when(est.isNotNull, est).otherwise(0)).agg(sum(pweight).alias("total")).head().getDouble(0))).alias("mean")).
+    case (Some(cluster), None) => svyFilter(est).
+        groupBy(cluster).agg((sum(pweight * (est - (svyFilter(est).agg((sum(est * pweight)/sum(pweight)).alias("estimate"))
+          .select("estimate").head().getDouble(0))))/(svyFilter(est).agg(sum(pweight).alias("total")).head().getDouble(0))).alias("mean")).
         agg((count("mean") * (1 - fpc) * var_samp("mean")).alias("variance"))
-      }
-    } else if (cluster.isEmpty) {
-      strata match {
-        case(Some(strata)) => df.withColumn(pweight.toString(), when(est.isNotNull, pweight).otherwise(0)).withColumn(est.toString(), when(est.isNotNull, est).otherwise(0)).
-        groupBy(strata).agg((sum(pweight * (est - (df.withColumn(pweight.toString(), when(est.isNotNull, pweight).otherwise(0)).withColumn(est.toString(), when(est.isNotNull, est).otherwise(0)).agg((sum(est * pweight)/sum(pweight)).alias("estimate"))
-          .select("estimate").head().getDouble(0))))/(df.withColumn(pweight.toString(), when(est.isNotNull, pweight).otherwise(0)).withColumn(est.toString(), when(est.isNotNull, est).otherwise(0)).agg(sum(pweight).alias("total")).head().getDouble(0))).alias("mean")).
+    case (None, Some(strata)) => svyFilter(est).
+        groupBy(strata).agg((sum(pweight * (est - (svyFilter(est).agg((sum(est * pweight)/sum(pweight)).alias("estimate"))
+          .select("estimate").head().getDouble(0))))/(svyFilter(est).agg(sum(pweight).alias("total")).head().getDouble(0))).alias("mean")).
         agg((count("mean") * (1 - fpc) * var_samp("mean")).alias("variance"))
-      }
-    } else {
-      (cluster, strata) match {
-        case(Some(cluster), Some(strata)) => df.withColumn(pweight.toString(), when(est.isNotNull, pweight).otherwise(0)).withColumn(est.toString(), when(est.isNotNull, est).otherwise(0)).
-        groupBy(strata, cluster).agg((sum(pweight * (est - (df.withColumn(pweight.toString(), when(est.isNotNull, pweight).otherwise(0)).withColumn(est.toString(), when(est.isNotNull, est).otherwise(0)).agg((sum(est * pweight)/sum(pweight)).alias("estimate"))
-          .select("estimate").head().getDouble(0))))/(df.withColumn(pweight.toString(), when(est.isNotNull, pweight).otherwise(0)).withColumn(est.toString(), when(est.isNotNull, est).otherwise(0)).agg(sum(pweight).alias("total")).head().getDouble(0))).alias("mean")).
+    case (Some(cluster), Some(strata)) => svyFilter(est).
+        groupBy(strata, cluster).agg((sum(pweight * (est - (svyFilter(est).agg((sum(est * pweight)/sum(pweight)).alias("estimate"))
+          .select("estimate").head().getDouble(0))))/(svyFilter(est).agg(sum(pweight).alias("total")).head().getDouble(0))).alias("mean")).
         groupBy(strata).agg((count("mean") * (1 - fpc) * var_samp("mean")).alias("vari")).agg(sum("vari").alias("variance"))
-      }
-    }
-  },
+    },
     statistic = col("mean")
   )
   override def svyRatio(numerator: Column, denominator: Column) : SurveyStat = new SurveyStat(
@@ -145,42 +110,29 @@ case class TsDesign (
     withColumn(numerator.toString(), when(numerator.isNotNull, numerator).otherwise(0)).
     withColumn(denominator.toString(), when(denominator.isNotNull, denominator).otherwise(0)).
     agg((sum(numerator * pweight)/sum(denominator * pweight)).alias("ratio")),
-    variance = {
-    // this is not the scala-ish way to do things
-    if (strata.isEmpty && cluster.isEmpty) {
-      // need to add fpc
-      df.withColumn(pweight.toString(), when(numerator.isNotNull && denominator.isNotNull, pweight).otherwise(0)).
+    variance = (cluster, strata) match {
+    case (None, None) => df.withColumn(pweight.toString(), when(numerator.isNotNull && denominator.isNotNull, pweight).otherwise(0)).
     withColumn(numerator.toString(), when(numerator.isNotNull, numerator).otherwise(0)).
     withColumn(denominator.toString(), when(denominator.isNotNull, denominator).otherwise(0)).agg(var_samp(numerator * pweight)/sum(pweight).alias("variance"))
-    } else if (strata.isEmpty) {
-      cluster match {
-        case(Some(cluster)) => df.withColumn(pweight.toString(), when(numerator.isNotNull && denominator.isNotNull, pweight).otherwise(0)).
+    case (Some(cluster), None) => df.withColumn(pweight.toString(), when(numerator.isNotNull && denominator.isNotNull, pweight).otherwise(0)).
     withColumn(numerator.toString(), when(numerator.isNotNull, numerator).otherwise(0)).
     withColumn(denominator.toString(), when(denominator.isNotNull, denominator).otherwise(0)).
         groupBy(cluster).agg((sum(pweight * (numerator - (df.agg((sum(numerator * pweight)/sum(pweight)).alias("estimate"))
           .select("estimate").head().getDouble(0))))/(df.agg(sum(pweight).alias("total")).head().getDouble(0))).alias("mean")).
         agg((count("mean") * (1 - fpc) * var_samp("mean")).alias("variance"))
-      }
-    } else if (cluster.isEmpty) {
-      strata match {
-        case(Some(strata)) => df.withColumn(pweight.toString(), when(numerator.isNotNull && denominator.isNotNull, pweight).otherwise(0)).
+    case (None, Some(strata)) => df.withColumn(pweight.toString(), when(numerator.isNotNull && denominator.isNotNull, pweight).otherwise(0)).
     withColumn(numerator.toString(), when(numerator.isNotNull, numerator).otherwise(0)).
     withColumn(denominator.toString(), when(denominator.isNotNull, denominator).otherwise(0)).
         groupBy(strata).agg((count("numerator") * var_samp(pweight * (numerator - (df.agg((sum(numerator * pweight)/sum(pweight)).alias("estimate"))
           .select("estimate").head().getDouble(0))))/(df.agg(sum(pweight).alias("total")).head().getDouble(0))).alias("mean")).
         agg(sum("vari").alias("variance"))
-      }
-    } else {
-      (cluster, strata) match {
-        case(Some(cluster), Some(strata)) => df.withColumn(pweight.toString(), when(numerator.isNotNull && denominator.isNotNull, pweight).otherwise(0)).
+    case (Some(cluster), Some(strata)) => df.withColumn(pweight.toString(), when(numerator.isNotNull && denominator.isNotNull, pweight).otherwise(0)).
     withColumn(numerator.toString(), when(numerator.isNotNull, numerator).otherwise(0)).
     withColumn(denominator.toString(), when(denominator.isNotNull, denominator).otherwise(0)).
         groupBy(strata, cluster).agg((sum(pweight * (numerator - (denominator * df.agg((sum(numerator * pweight)/sum(denominator * pweight)).alias("ratio"))
           .select("ratio").head().getDouble(0))))/(df.agg(sum(pweight * denominator).alias("total")).head().getDouble(0))).alias("mean")).
         groupBy(strata).agg((count("mean") * (1 - fpc) * var_samp("mean")).alias("vari")).agg(sum("vari").alias("variance"))
-      }
-    }
-  },
+    },
     statistic = col("ratio")
   )
   override def svySubset(bool: Column) : TsDesign = {
