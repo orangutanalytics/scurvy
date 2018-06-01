@@ -29,7 +29,7 @@ sealed trait SurveyDesign {
   //def svyCalibrate() : SurveyDesign
   //def svyPostStratify() : SurveyDesign
   //def svyRake() : SurveyDesign
-  def svyFilter(est: Column*) : DataFrame = {
+  def svyFilter(est: Column) : DataFrame = {
     df.withColumn(pweight.toString(), when(est.isNotNull, pweight).otherwise(0)).withColumn(est.toString(), when(est.isNotNull, est).otherwise(0))
   }
 
