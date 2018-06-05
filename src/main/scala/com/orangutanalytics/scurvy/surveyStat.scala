@@ -105,5 +105,5 @@ case class SurveyRatio(svy: SurveyDesign, numerator: Column, denominator: Column
       case _ => throw new Exception("I didn't implement all the survey designs yet sorry!")
     }
   }
-  override def statistic: Column = col("mean")
+  override def statistic: Column = col("ratio")
 }
