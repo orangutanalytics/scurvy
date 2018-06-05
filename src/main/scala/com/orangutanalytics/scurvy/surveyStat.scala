@@ -46,21 +46,16 @@ case class SurveyMean(svy: SurveyDesign, est: Column) extends SurveyStat {
   override def variance: DataFrame = {
     svy match {
       case TsDesign(df, pweight, strata, cluster, fpc) => (cluster, strata) match {
-        case (None, None) => svy.svyFilterMissing(est).
-          agg((sum(pweight * (est - (svy.svyFilterMissing(est).agg((sum(est * pweight) / sum(pweight)).alias("estimate"))
-            .select("estimate").head().getDouble(0)))) / (svy.svyFilterMissing(est).agg(sum(pweight).alias("total")).head().getDouble(0))).alias("mean")).
-          agg((count("mean") * (1 - fpc) * var_samp("mean")).alias("variance"))
+        case (None, None) => svy.svyFilterMissing(est).agg((count(est) * (1 - fpc) * var_samp(
+          pweight * (est - this.estimate.select("mean").head().getDouble(0)) / svy.svySubset(est.isNotNull).svyCount())).alias("variance"))
         case (Some(cluster), None) => svy.svyFilterMissing(est).
           groupBy(cluster).agg((sum(pweight * (est - (svy.svyFilterMissing(est).agg((sum(est * pweight) / sum(pweight)).alias("estimate"))
             .select("estimate").head().getDouble(0)))) / (svy.svyFilterMissing(est).agg(sum(pweight).alias("total")).head().getDouble(0))).alias("mean")).
           agg((count("mean") * (1 - fpc) * var_samp("mean")).alias("variance"))
-        case (None, Some(strata)) => svy.svyFilterMissing(est).
-          groupBy(strata).agg((sum(pweight * (est - (svy.svyFilterMissing(est).agg((sum(est * pweight) / sum(pweight)).alias("estimate"))
-            .select("estimate").head().getDouble(0)))) / (svy.svyFilterMissing(est).agg(sum(pweight).alias("total")).head().getDouble(0))).alias("mean")).
-          agg((count("mean") * (1 - fpc) * var_samp("mean")).alias("variance"))
+        case (None, Some(strata)) => svy.svyFilterMissing(est).groupBy(strata).agg((count(est) * (1 - fpc) * var_samp(
+          pweight * (est - this.estimate.select("mean").head().getDouble(0)) / svy.svySubset(est.isNotNull).svyCount())).alias("variance")).agg(sum("variance").alias("variance"))
         case (Some(cluster), Some(strata)) => svy.svyFilterMissing(est).
-          groupBy(strata, cluster).agg((sum(pweight * (est - (svy.svyFilterMissing(est).agg((sum(est * pweight) / sum(pweight)).alias("estimate"))
-            .select("estimate").head().getDouble(0)))) / (svy.svyFilterMissing(est).agg(sum(pweight).alias("total")).head().getDouble(0))).alias("mean")).
+          groupBy(strata, cluster).agg((sum(pweight * (est - (this.estimate.select("mean").head().getDouble(0)))) / (svy.svySubset(est.isNotNull).svyCount())).alias("mean")).
           groupBy(strata).agg((count("mean") * (1 - fpc) * var_samp("mean")).alias("vari")).agg(sum("vari").alias("variance"))
         case _ => throw new Exception("This should never happen!")
       }
@@ -80,25 +75,22 @@ case class SurveyRatio(svy: SurveyDesign, numerator: Column, denominator: Column
     svy match {
       case TsDesign(df, pweight, strata, cluster, fpc) => (cluster, strata) match {
         case (None, None) => svy.svyFilterMissing(numerator).withColumn(pweight.toString(), when(denominator.isNotNull, pweight).otherwise(0)).
-          withColumn(denominator.toString(), when(denominator.isNotNull, denominator).otherwise(0)).agg(var_samp(numerator * pweight) / sum(pweight).alias("variance"))
+          withColumn(denominator.toString(), when(denominator.isNotNull, denominator).otherwise(0)).
+          agg((count(numerator) * (1 - fpc) * var_samp(
+            pweight * (numerator - (denominator * this.estimate.select("ratio").head().getDouble(0))) / SurveyTotal(svy.svySubset(numerator.isNotNull), denominator).estimate.select("total").head().getDouble(0))).alias("variance"))
         case (Some(cluster), None) => svy.svyFilterMissing(numerator).withColumn(pweight.toString(), when(denominator.isNotNull, pweight).otherwise(0)).
           withColumn(denominator.toString(), when(denominator.isNotNull, denominator).otherwise(0)).
-          groupBy(cluster).agg((sum(pweight * (numerator - (svy.svyFilterMissing(numerator).withColumn(pweight.toString(), when(denominator.isNotNull, pweight).otherwise(0)).
-            withColumn(denominator.toString(), when(denominator.isNotNull, denominator).otherwise(0)).agg((sum(numerator * pweight) / sum(pweight)).alias("estimate"))
-            .select("estimate").head().getDouble(0)))) / (svy.svyFilterMissing(numerator).withColumn(pweight.toString(), when(denominator.isNotNull, pweight).otherwise(0)).
-            withColumn(denominator.toString(), when(denominator.isNotNull, denominator).otherwise(0)).agg(sum(pweight).alias("total")).head().getDouble(0))).alias("mean")).
+          groupBy(cluster).agg((sum(pweight * (numerator - (denominator * this.estimate.select("ratio").head().getDouble(0)))) /
+            (SurveyTotal(svy.svySubset(numerator.isNotNull), denominator).estimate.select(col("total")).head().getDouble(0))).alias("mean")).
           agg((count("mean") * (1 - fpc) * var_samp("mean")).alias("variance"))
         case (None, Some(strata)) => svy.svyFilterMissing(numerator).withColumn(pweight.toString(), when(denominator.isNotNull, pweight).otherwise(0)).
-          withColumn(denominator.toString(), when(denominator.isNotNull, denominator).otherwise(0)).
-          groupBy(strata).agg((count("numerator") * var_samp(pweight * (numerator - (svy.svyFilterMissing(numerator).withColumn(pweight.toString(), when(denominator.isNotNull, pweight).otherwise(0)).
-            withColumn(denominator.toString(), when(denominator.isNotNull, denominator).otherwise(0)).agg((sum(numerator * pweight) / sum(pweight)).alias("estimate"))
-            .select("estimate").head().getDouble(0)))) / (svy.svyFilterMissing(numerator).withColumn(pweight.toString(), when(denominator.isNotNull, pweight).otherwise(0)).
-            withColumn(denominator.toString(), when(denominator.isNotNull, denominator).otherwise(0)).agg(sum(pweight).alias("total")).head().getDouble(0))).alias("mean")).
-          agg(sum("vari").alias("variance"))
+          withColumn(denominator.toString(), when(denominator.isNotNull, denominator).otherwise(0)).groupBy(strata).
+          agg((count(numerator) * (1 - fpc) * var_samp(
+            pweight * (numerator - (denominator * this.estimate.select("ratio").head().getDouble(0))) / SurveyTotal(svy.svySubset(numerator.isNotNull), denominator).estimate.select("total").head().getDouble(0))).alias("variance")).agg(sum("variance").alias("variance"))
         case (Some(cluster), Some(strata)) => svy.svyFilterMissing(numerator).withColumn(pweight.toString(), when(denominator.isNotNull, pweight).otherwise(0)).
           withColumn(denominator.toString(), when(denominator.isNotNull, denominator).otherwise(0)).
           groupBy(strata, cluster).agg((sum(pweight * (numerator - (denominator * this.estimate.select("ratio").head().getDouble(0)))) /
-            (SurveyTotal(svy.svySubset(numerator.isNotNull && denominator.isNotNull), denominator).estimate.select(col("total")).head().getDouble(0))).alias("mean")).
+            (SurveyTotal(svy.svySubset(numerator.isNotNull), denominator).estimate.select(col("total")).head().getDouble(0))).alias("mean")).
           groupBy(strata).agg((count("mean") * (1 - fpc) * var_samp("mean")).alias("vari")).agg(sum("vari").alias("variance"))
         case _ => throw new Exception("This should never happen!")
       }

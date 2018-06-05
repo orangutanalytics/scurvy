@@ -51,11 +51,20 @@ class SurveyTest extends FunSuite {
     // numerical issue so just checking we are close
     assert(Math.abs(SurveyMean(nhanes_cluster_strata, $"HI_CHOL").variance.select("variance").head().getDouble(0) - 0.00002965717) <= 0.0000000001)
     assert(Math.abs(SurveyMean(nhanes_cluster_strata, $"HI_CHOL").cv.select("cv").head().getDouble(0) - 0.04856158) <= 0.00000001)
+
+    assert(Math.abs(SurveyMean(nhanes_cluster, $"HI_CHOL").SE.select("SE").head().getDouble(0) - 0.006336503) <= 0.00000001)
+    assert(Math.abs(SurveyMean(nhanes_rs, $"HI_CHOL").SE.select("SE").head().getDouble(0) - 0.004703148) <= 0.00000001)
+    assert(Math.abs(SurveyMean(nhanes_strata, $"HI_CHOL").SE.select("SE").head().getDouble(0) - 0.004700224) <= 0.00000001)
   }
 
   test("svyratio") {
+    // ratio with race makes no sense just testing numerically
     assert(Math.abs(SurveyRatio(nhanes_cluster_strata, $"HI_CHOL", $"race").estimate.select("ratio").head().getDouble(0) - 0.05331284) <= 0.0000001)
     assert(Math.abs(SurveyRatio(nhanes_cluster_strata, $"HI_CHOL", $"race").SE.select("SE").head().getDouble(0) - 0.002867244) <= 0.00000001)
+
+    assert(Math.abs(SurveyRatio(nhanes_rs, $"HI_CHOL", $"race").SE.select("SE").head().getDouble(0) - 0.002252522) <= 0.00000001)
+    assert(Math.abs(SurveyRatio(nhanes_cluster, $"HI_CHOL", $"race").SE.select("SE").head().getDouble(0) - 0.00371728) <= 0.00000001)
+    assert(Math.abs(SurveyRatio(nhanes_strata, $"HI_CHOL", $"race").SE.select("SE").head().getDouble(0) - 0.002249701) <= 0.00000001)
   }
 
 }
