@@ -15,11 +15,16 @@ sealed trait SurveyDesign {
     case false => df.count().toDouble
   }
   // transformations
+  // might be able to abstract pattern here
   def svySubset(bool: Column): SurveyDesign
-  def svyFilterMissing(est: Column): DataFrame = {
-    df.withColumn(pweight.toString(), when(est.isNotNull, pweight).otherwise(0)).withColumn(est.toString(), when(est.isNotNull, est).otherwise(0))
+  // make private or something
+  def svyFilterMissing(ests: Column*): DataFrame = {
+    var newDf = df
+    ests.map(est => {
+      newDf = newDf.withColumn(pweight.toString(), when(est.isNotNull, pweight).otherwise(0)).withColumn(est.toString(), when(est.isNotNull, est).otherwise(0))
+    })
+    newDf
   }
-
 }
 
 case class TsDesign(
@@ -32,14 +37,15 @@ case class TsDesign(
     case (None, None) => df.count().toInt - 1
     case (Some(cluster), None) => df.select(cluster).distinct().count().toInt - 1
     case (None, Some(strata)) => df.count().toInt - df.select(strata).distinct().count().toInt
-    case (Some(cluster), Some(strata)) => df.groupBy(strata).agg(countDistinct(cluster).alias("total")).agg(sum("total")).head().getLong(0).toInt - df.select(strata).distinct().count().toInt
+    case (Some(cluster), Some(strata)) => df.groupBy(strata).agg(countDistinct(cluster).alias("total")).agg(sum("total")).head().getLong(0).toInt - df.select(strata).
+    distinct().count().toInt
   }
 
   override def svySubset(bool: Column): TsDesign = {
     TsDesign(
       df.withColumn(
-      pweight.toString(),
-      when(bool, pweight).otherwise(0)),
+        pweight.toString(),
+        when(bool, pweight).otherwise(0)),
       pweight, strata, cluster, fpc)
   }
 }
@@ -64,8 +70,8 @@ case class BrrDesign(
   override def svySubset(bool: Column): BrrDesign = {
     BrrDesign(
       df.withColumn(
-      pweight.toString(),
-      when(bool, pweight).otherwise(0)),
+        pweight.toString(),
+        when(bool, pweight).otherwise(0)),
       pweight, repweights, mse, scale, rscales)
   }
 }
@@ -81,8 +87,8 @@ case class FayDesign(
   override def svySubset(bool: Column): FayDesign = {
     FayDesign(
       df.withColumn(
-      pweight.toString(),
-      when(bool, pweight).otherwise(0)),
+        pweight.toString(),
+        when(bool, pweight).otherwise(0)),
       pweight, repweights, rho, mse, scale, rscales)
   }
 }
@@ -98,8 +104,8 @@ case class Jk1Design(
   override def svySubset(bool: Column): Jk1Design = {
     Jk1Design(
       df.withColumn(
-      pweight.toString(),
-      when(bool, pweight).otherwise(0)),
+        pweight.toString(),
+        when(bool, pweight).otherwise(0)),
       pweight, repweights, fpc, mse, scale, rscales)
   }
 }
@@ -115,8 +121,8 @@ case class JknDesign(
   override def svySubset(bool: Column): JknDesign = {
     JknDesign(
       df.withColumn(
-      pweight.toString(),
-      when(bool, pweight).otherwise(0)),
+        pweight.toString(),
+        when(bool, pweight).otherwise(0)),
       pweight, repweights, fpc, mse, scale, rscales)
   }
 }
@@ -131,8 +137,8 @@ case class BootstrapDesign(
   override def svySubset(bool: Column): BootstrapDesign = {
     BootstrapDesign(
       df.withColumn(
-      pweight.toString(),
-      when(bool, pweight).otherwise(0)),
+        pweight.toString(),
+        when(bool, pweight).otherwise(0)),
       pweight, repweights, mse, scale, rscales)
   }
 }
